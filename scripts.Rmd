@@ -1,0 +1,874 @@
+
+PULIZIA DEI DATI
+
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo=FALSE,
+  warning=FALSE,
+  message=FALSE,
+  fig.path="figures/",
+  fig.width= 7,
+  fig.height=5,
+  fig.ext = "pdf",
+  dev= "pdf"
+
+
+)
+
+```
+
+
+
+
+
+```{r, include=FALSE}
+
+library(quantmod)
+#install.packages("astsa")
+library(astsa)
+library(readxl)
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("fImport")
+library(fImport)
+#install.packages("fBasics")
+library(fBasics)
+#install.packages("rugarch")
+library(rugarch)   
+#install.packages("roll")
+library(roll)
+#install.packages("distr")
+library(distr)
+#install.packages("FinTS")
+library(FinTS)
+#install.packages("rmgarch")  #DCC_garch multivariati
+library(rmgarch)
+library(ggplot2)
+
+```
+
+
+
+
+SCarico i dati giornalieri degli asset in analizi.
+
+```{r,include=FALSE}
+
+SX5E <- read_excel("dati/EuroSTX 50 idex daily2.xlsx",sheet = "Foglio1")
+UST_TR <- read_excel("dati/Us treasury bond tt return daily.xlsx",sheet = "Foglio1")
+GOLD <- read_excel("dati/Gold c2 (futures) daily.xlsx",sheet = "Foglio1")
+Brent <- read_excel("dati/Brent oil c1 (ftures) daily.xlsx", sheet = "Foglio1")
+```
+
+Prezzi di chiusura
+
+```{r,include=FALSE}
+closeSx=xts(SX5E[,-1], order.by = SX5E$`Exchange Date`, frequency = "daily")
+closeUST=xts(UST_TR[,-1], order.by = UST_TR$`Exchange Date`, frequency = "daily")
+closeGLD=xts(GOLD[,-1], order.by = GOLD$`Exchange Date`, frequency = "daily")
+closeBr=xts(Brent[,-1], order.by = Brent$`Exchange Date`, frequency = "daily")
+
+
+
+```
+
+
+
+```{r  prices, fig.cap="serie storiche dei prezzi di chiusura", fig.width=8, fig.height=5} 
+par(mfrow=c(2,2), mar=c(3,3,2,1), mgp=c(1.5,0.5,0))
+plot(closeSx)
+plot(closeUST)
+plot(closeGLD)
+plot(closeBr)
+```
+
+
+log-prezzi e rendimenti
+
+```{r, include=FALSE}
+
+pSx=log(closeSx)
+pUst=log(closeUST)
+pGLD=log(closeGLD)
+pBr=log(closeBr)
+
+
+#rendimenti percentuali
+
+
+
+rSx=diff(pSx)*100
+rUst=diff(pUst)*100
+rGLD=diff(pGLD)*100
+rBr=diff(pBr)*100
+
+plot(rSx)
+
+```
+
+```{r rendimenti, fig.cap="rendimenti giornalieri", fig.width=8, fig.height=5}
+par(mfrow=c(2,2),mar=c(3,3,2,1), mgp=c(1.5,0.5,0))
+plot(rSx)
+plot(rUst)
+plot(rGLD)
+plot(rBr)
+
+```
+
+
+#gestione dei mercati chiusi(return =0), questo non influenza negativamentre la stima+
+
+
+```{r, include=FALSE}
+
+rSx[is.na(rSx)]<-0
+rUst[is.na(rUst)]<-0
+rGLD[is.na(rGLD)]<-0
+rBr[is.na(rBr)]<-0
+
+sum(is.na(rSx))
+head(rSx)
+
+```
+
+
+statistiche descrittive dei rendimenti
+
+```{r descriptive-table, include=FALSE }
+#install.packages("xtable")
+library(xtable)
+
+all_rendiment=merge(rSx, rUst, rGLD, rBr) #tutti i rendimenti insieme
+tab=basicStats(all_rendiment)
+print(xtable(tab),
+      file="figures/descriptive_st.tex",
+      include.rownames=TRUE)
+
+```
+
+#osservo che  hanno code pesanti rispetto a una normale (k>3), caratteristica delle serire storiche finanzirie e sono assimetriche a sinistra dove se sono a ìssimetrihe verso sinistra ce una perdita invece a destra ci sarta un guadagno nel nostro caso sinistra
+
+
+
+ora osserviamo quanto detto confrontando la doistribuzione degli asset con quelli di una normale standard teorica (calcolandola come se ir endimenti fossero stati normali) e hist() disegna quellli reali
+```{r distribuzioni, fig.cap="confronto tra distrubuzione emprica con la normale teorica", fig.width=8, fig.height=5}
+par(mfrow=c(2,2))
+xfit1 <- seq(min(rSx),max(rSx),length=40) 
+yfit1 <- dnorm(xfit1,mean=mean(rSx),sd=sd(rSx)) 
+hist(rSx,breaks=100,freq=F,main="Rendimenti SX5E",xlab="")
+lines(xfit1, yfit1, col=2, lwd=2)
+
+xfit2 <- seq(min(rUst),max(rUst),length=40) 
+yfit2 <- dnorm(xfit2,mean=mean(rUst),sd=sd(rUst)) 
+hist(rUst,breaks=100,freq=F,main="Rendimenti UST_TR",xlab="")
+lines(xfit2 , yfit2 , col = 2, lwd = 2)
+
+xfit3 <- seq(min(rGLD),max(rGLD),length=40) 
+yfit3 <- dnorm(xfit3,mean=mean(rGLD),sd=sd(rGLD)) 
+hist(rGLD,breaks=100,freq=F,main="Rendimenti GOLD",xlab="")
+lines(xfit3 , yfit3 , col = 2, lwd = 2)
+
+xfit4 <- seq(min(rBr),max(rBr),length=40) 
+yfit4<- dnorm(xfit4,mean=mean(rBr),sd=sd(rBr)) 
+hist(rBr,breaks=100,freq=F,main="Rendimenti BRENT",xlab="")
+lines(xfit4 , yfit4 , col = 2, lwd = 2)
+
+
+```
+
+la curva rossa(normale) sottostima la frequenza degli eventi. le code dell'isotogramma reale sono più grosse.
+il picco dell'isotogramma reale è più alto di quello9 della niormale (distribuzione leptcurtica). Queste implicazione è di fatto dato che shock di mercato sono più probabile di quanto una normale predica (tail risk).
+
+
+
+test sulla normalità
+```{r, include=FALSE}
+
+
+jarqueberaTest(rSx)
+jarqueberaTest(rUst)
+jarqueberaTest(rGLD)
+jarqueberaTest(rBr)
+
+```
+
+su tutti i 4 rifiuto l'ipotesi di normlaità
+
+
+Verifico la presenza di volatila clustering che è assocciata allal cosidettat effetto dio correlazione della potenze/persisistenza ( da verificare)
+
+tale verifica si fodna sull'analisi delle autocorrelazioni. 
+
+
+#acf dei rendmenti
+```{r autocorelazioni dei rendimenti, fig.cap= "autocorrrelazione dei rendimenti"}
+par(mfrow=c(2,2))
+
+acf(rSx, lag.max=22, xlab="", main="Sx5E")
+acf(rUst, lag.max=22, xlab="", main="UST_TR")
+acf(rGLD, lag.max=22, xlab="", main="GOld")
+acf(rBr, lag.max=22, xlab="", main="Brent")
+
+```
+
+
+#rendimenti aasssoluti, proxy dellla volatilità
+```{r acf della volatilità, fig.cap="autocorrelazione della volatilià"}
+par(mfrow=c(2,2))
+
+acf(abs(rSx), lag.max=22, xlab="", main="|Sx5E|")
+acf(abs(rUst), lag.max=22, xlab="", main="|UST_TR|")
+acf(abs(rGLD), lag.max=22, xlab="", main="|Gold|")
+acf(abs(rBr), lag.max=22, xlab="", main="|Brent|")
+```
+#riguardar wmeglio  brent
+
+
+
+rendimenti sl quadratra proxy della varainza
+```{r, fig.show="hide"}
+par(mfrow=c(2,2))
+acf(rSx^2, lag.max=22, xlab="", main="(Sx5E)^2")
+acf(rUst^2, lag.max=22, xlab="", main="(UST_TR)^2")
+acf(rGLD^2, lag.max=22, xlab="", main="(GOld)^2")
+acf(rBr^2, lag.max=22, xlab="", main="(Brent)^2")
+
+
+```
+
+
+#data l'evodenza di volatily clustering, si effetuano il test di Lsgrange Multiplier (LM-ARCH()) e il test di Ljiung Box
+
+Test per effetti ARCH per studiare la volatilità dei rendimneti
+
+```{r, include=FALSE}
+
+ySx=as.timeSeries(rSx-mean(rSx))
+y2Sx=ySx^2
+
+yUst=as.timeSeries(rUst-mean(rUst))
+y2Ust=yUst^2
+
+yGLD=as.timeSeries(rGLD-mean(rGLD))
+y2GLD=yGLD^2
+
+yBr=as.timeSeries(rBr-mean(rBr))
+y2Br=yBr^2
+
+
+
+#test per l'eteroschedastictà (Ho:omoschdatstico)
+
+ArchTest(ySx,lags=13)
+ArchTest(yUst,lags=13)
+ArchTest(yGLD,lags=13)
+ArchTest(yBr,lags=13)
+
+
+
+```
+
+su tutte e 4 gli assete rifiuto l'ipotesi nulla, ossia quella di non presenza di effetto ARCH
+
+#Box.tes
+
+```{r, include=FALSE}
+Box.test(y2Sx, lag=5, type = "Ljung-Box")
+Box.test(y2Ust, lag=5, type = "Ljung-Box")
+Box.test(y2GLD, lag=5, type = "Ljung-Box")
+Box.test(y2Br, lag=5, type = "Ljung-Box")
+```
+p-value <=0.05 confermano la presenza di correlazione seriale dei rendimenti al quadrato r^2_t
+
+
+dopo queste conclusioni ho tutte le carte in regola per usare il GARCH univariato
+
+```{r, include=FALSE}
+spec1=ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)),
+                 mean.model = list(armaOrder=c(0,0),include.mean=TRUE), 
+                 distribution.model = "norm")
+
+
+fit1=ugarchfit(spec1, rSx)
+fit2=ugarchfit(spec1, rUst)
+fit3=ugarchfit(spec1, rGLD)
+fit4=ugarchfit(spec1, rBr)
+
+
+
+```
+
+
+```{r, include=FALSE}
+spec2=ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)),
+                 mean.model = list(armaOrder=c(0,0), include.mean=TRUE), distribution.model = "std")
+
+
+fit1.std=ugarchfit(spec2, rSx)
+fit2.std=ugarchfit(spec2, rUst)
+fit3.std=ugarchfit(spec2, rGLD)
+fit4.std=ugarchfit(spec2, rBr)
+
+
+
+
+```
+
+
+
+
+```{r, include=FALSE}
+
+#EuroSXtock 50
+show(fit1)
+show(fit1.std)
+
+#US tresury bond
+show(fit2)
+show(fit2.std)
+
+#gold
+show(fit3)
+show(fit3.std)
+
+
+#Brent oil
+show(fit4)
+show(fit4.std)
+
+```
+
+
+confront tra il modello 1 basato sulla distribuzione con innovazioni normali e il modello 2 con innovazion Student-t
+
+Dai risultati ottenuti ho che per la bonta di adattamento not che la LogLikelihod del modello 2 è -805.11 ed è superiore al modello 2 che vale -837,204.  
+AIC, BIC,Bayes e HQ nel modello 2 sono inferiore a quelli del modello 1 è secondo il mio criterio informativo è moderatamente preferibili il modello 2 
+
+```{r, include=FALSE}
+ICall=cbind(infocriteria(fit1),infocriteria(fit1.std))
+colnames(ICall)=c("GARCH", "GARCH-t")
+show(ICall)
+
+
+```
+DOpo avenr analizzato la likelihood e il criterio informativo concludo che il modello 2 cattura meglio le code pesanti
+
+
+#Standar eroor robusti -standard error rQML
+
+```{r, include =FALSE}
+sqrt(diag(vcov(fit1, robust=T)))
+sqrt(diag(vcov(fit1.std, robust=T)))
+```
+#stazionareita
+
+```{r, include=FALSE}
+(fit1@fit$coef[3]+fit1@fit$coef[4])
+(fit1.std@fit$coef[3]+fit1.std@fit$coef[4])
+```
+Entrambi i modelli sono stazionari poichè il ilo alpha1+beta1<1 anche se è di poco.
+
+la volatilità dei due modelli è molto persistente ma quella del modello 2 è superiore. questo significa che la volatilità del giorno t-1 (giorno prima)  influenza quella del giorno t. ma poichè è stazionario la volatilità ritorna alla sua media nel lungo periodo. Quindi gli shock che ha subito EuroXt 50 influenza la volatilità per molto tempo
+
+(alpah1 :mecati reattivi alle notizie, B1:cluster di volatilità lunghi)
+
+
+
+Sul test di corerlazione seraile (ljung.Box) entrambi i modello non mostrano autocorrelazione nei residui standardizzzati (p. value >0.05)
+
+#stessa cosa vale anche per i resudi quadrati
+
+il modello con distribuzione Student-t fornisce una rapppresentazione più accurata della serie, specialmente per quanto riguarda le code dellla distribuzuimene la stima del rendimento medio.
+
+
+
+
+TReasury bond
+```{r, include=FALSE}
+ICall=cbind(infocriteria(fit2),infocriteria(fit2.std))
+colnames(ICall)=c("GARCH", "GARCH-t")
+show(ICall)
+
+```
+
+preferebilie il modello 2 rispetto al modello 1 per le stesse ragioni per Euristx 50
+
+
+```{r, include=FALSE}
+(fit2@fit$coef[3]+fit2@fit$coef[4])
+(fit2.std@fit$coef[3]+fit2.std@fit$coef[4])
+```
+ 
+ #hanno un alta persistenza (0.999) entrambe, shock di oggi influenzero i US bond per un bel po di tempo
+
+#stesa cosa sia brento o il che gold (ricontrolllare)
+
+
+
+
+
+#ricavo la seire dei residui standardizzati, zit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r, include =FALSE}
+#controlo
+
+
+mspec=multispec(replicate(4, spec2));multispec #scelgo i garch(1,1) con innovazioni t-student
+
+all_return=merge(rSx, rUst, rGLD, rBr);all_return
+#all_return=all_return[-1,]
+all_return=na.omit(all_return)
+
+u_fit=multifit(mspec,data=all_return)
+
+```
+
+res_Sx=residuals(fit1.std, standardize=TRUE)
+
+
+costruzione e stima del dcc
+
+```{r}
+
+dcc_spec=dccspec(uspec=mspec,dccOrder = c(1,1), distribution = "mvnorm")
+
+
+dcc_fit=dccfit(dcc_spec,data=all_return, fit.control = list(eval.se=TRUE))
+#fit.control=list(eval.se=T)mi calocla anche le deviazioni stdard dei pamaetri stimati che mi sevriver a per test diu significativ, t.stta. robbistezza dei risultati
+
+show(dcc_fit)
+```
+
+
+Osservazioni:La similitudine tra i parametri GARCH (alpha e beta) stimati del modello univariato e multivariato riflettono il fatto che il modello DCC-garch preserva le singole condizioni di varianza dinamica mentre lascia che corerlazione varia nel tempo
+
+
+```{r, include==FALSE}
+dcc_fit@mfit$coef[21]+dcc_fit@mfit$coef[22]
+```
+
+La stima del DCC_GARCH(1,1) mostra una forte persistenza nella volatilità in tutti gli asset, coerente con il fenomeno del volatility clustering.I parametri di correlazioe dinamica soddisfanno la condizione di stazionarietaa (0.981). Quest'ultimo conferma la presenza di correlazione dinamica (varia nel tempo). In particolare poichè ha un elvata persistenza, ci suggerisce che periodi di elevata co-movimentazione tendono a protarsi nel tempo, sopratutto fasi di stress dei mercati
+
+
+#Interpretazione Economica 
+
+
+
+#modello DCC-GARCH with Jumo
+
+poichè non esiste un pacchetto R che stima direttamente un vero DCC-GARCH con Poisson jumps multivariato applico la segeiunete strategia:
+
+
+#Fase 1: non modelllo esplicitamente Nt, ma lascio che la dsitribuzione degli errori (innovazioni) catturi eventi estremi. Applico la t-Student multivariata che ha code più pesanti in grado di catturare co-movimenti persistenti e correlazioni dinamiche. 
+
+```{r output dcc, fig.cap="outp-dcc-mvt"}
+#ho che gli spike non vengono "smussati" dalla normalità
+
+dcc_spec_mvt=dccspec(uspec=mspec, dccOrder=c(1,1), distribution="mvt")
+
+dcc_fit_mvt=dccfit(dcc_spec_mvt, data = all_return, fit.control = list(eval.se=TRUE))
+
+show(dcc_fit_mvt)
+
+```
+
+
+
+
+#Passo 2: Estensione a salti: eseguo un jump filtering sui residui standardizzati, metto in chiaro che non sto stimando una vera Poisson ma sto isolando shock estremi per poi studiare il loro impatto sulla DCC
+
+#a partire dalla seire dei resiudi standardizzati sis tims il moedllo perr le correllazioni
+
+
+```{r,include=FALSE}
+res_Sx=residuals(fit1.std, standardize=TRUE)
+res_Ust=residuals(fit2.std, standardize=TRUE)
+res_Gld=residuals(fit3.std, standardize=TRUE)
+res_Br=residuals(fit4.std, standardize=TRUE)
+
+
+```
+
+
+
+```{r,include=FALSE}
+c=4  #raro osserva |res_t| >4
+
+#err_t~tv(0,sigma_t)  -->    res_t=err_t/sigma_t  --> res_t~tv(/0,1)
+
+#abs(res_sx) rapreesenta l'ampiezza dello shock standardizzato, ossia quanto è grande l'innovazione rispetto alla volatilità attesa ( |err_t|>c*sigma_t ) <--> equivalentemente
+
+# |res_t| > c
+
+J_sx=ifelse(abs(res_Sx) > c, res_Sx, 0)  #ifelse(test,yes,no) #se e vero la condizione del test riposto res_s se è falsa risporto 0
+J_Ust=ifelse(abs(res_Ust)>c, res_Ust, 0)
+J_Gld=ifelse(abs(res_Gld)> c, res_Gld, 0)
+J_Br=ifelse(abs(res_Br) > c, res_Br,  0)
+
+
+```
+
+#rendimenti puliti
+
+```{r,include=FALSE}
+##residui puliti senza salti estremi
+#eta_sx=res_Sx - J_sx
+#eta_Ust=res_Ust -J_Ust
+#eta_Gld=res_Gld -J_Gld
+#eta_Br= res_Br - J_Br
+
+
+
+#rendimenti pultit  r_i,t=mu_i +er_i,t --> err_it=sigma_i,t*z_,i,t --> z_i,t~tv(0,1)
+
+#reisudo standardiazato meno i salti J--> z_i,t - J_i,t=eta_i,t
+rSx_clean=rSx - J_sx*sigma(fit1.std)
+rUst_clean=rUst -J_Ust*sigma(fit2.std)
+rGld_clean=rGLD -J_Gld*sigma(fit3.std)
+rBr_clean=rBr -J_Br*sigma(fit4.std)
+
+return_clean=merge(rSx_clean, rUst_clean, rGld_clean, rBr_clean)
+colnames(return_clean)=c("EX_50", "UST_TR", "GOLD", "Brent")
+return_clean=na.omit(return_clean);return_clean
+
+```
+
+
+#DCC sui residui filtrati
+
+
+
+```{r output dcc no jump , fig.cap="output dcc-with know jump"}
+dcc_fit_clean=dccfit(
+  dcc_spec_mvt, data=return_clean, fit.control = list(eval.se=TRUE)
+)
+
+
+show(dcc_fit_clean)
+dcc_fit_clean@mfit$coef
+```
+#correlazioni dinamiche 
+
+```{r dcc-correlazioni, fig.cap= "correlazioni dinamiche DCC-GARCH", fig.width=10, fig.height=6}
+R_base=rcor(dcc_fit_mvt)
+R_clean=rcor(dcc_fit_clean)
+
+start_date=as.Date("2019-02-04")
+dates=start_date + (1:length(R_base[1,3,])-1)
+
+par(mfrow=c(2,2))
+
+plot(dates, R_base[1,3,], type="l", col="red", main="DCC EX_50-GOLD", ylab="correlation", xlab="time")
+lines(dates,R_clean[1,3,], col="blue")
+legend("topleft", legend = c("Baseline", "Jump-filtered"), col=c("red", "blue"), lty=1, cex=0.4)
+
+
+plot(dates, R_base[1,4,], type="l", col="red", main="DCC EX_50-Brent", ylab="correlation", xlab="time")
+lines(dates,R_clean[1,4,], col="blue")
+legend("topleft", legend = c("Baseline", "Jump-filtered"), col=c("red", "blue"), lty=1, cex=0.4)
+
+plot(dates, R_base[1,2,], type="l", col="red", main="DCC EX_50-US_tr", ylab="correlation", xlab="time")
+lines(dates,R_clean[1,2,], col="blue")
+legend("topleft", legend = c("Baseline", "Jump-filtered"), col=c("red", "blue"), lty=1, cex=0.4)
+
+
+plot(dates, R_base[2,4,], type="l", col="red", main="DCC US_tr-Brent", ylab="correlation", xlab="time")
+lines(dates,R_clean[2,4,], col="blue")
+legend("topleft", legend = c("Baseline", "Jump-filtered"), col=c("red", "blue"), lty=1, cex=0.4)
+
+```
+il grafico dellle correlazioni dinamiche mostra chiaramente la differenz tra i dati non filtrati e quelli filtrati da jump. I picchi di corredlazione osservati nei dati non filtrati sono attenuti nel modello jump-filtered.
+La linea blu (jump filtered) mostra un livello emdio di correlazione leggermente inferireo rispeetto alla linea rossa. Questo indica che i picchi estreminei rendimenti originali aumentano temporaneamnete la correlazione tar gli asset
+
+Tra Euroxtokx e GOld
+Nei periodi tra marzo e luglio del 2020 si generano spike temporanei molto rillevanti che riflettono un aumento del rischio sistematico del rischio e del contaggio finanzairio dovuto al covid-19
+
+#finire lo studio dei dati dopo
+
+
+#Ananlsii dei dati mesnili
+
+L'analisi sui dati mensili non replicxa integralmente quella giornaliera, ma ha uno scopo dieverso Ossia quello di studiare aggisutamenti graduali e cambiamneti persistenti nella struttura di correlazione di lungo periodo.
+
+
+
+
+#Previsioni 
+
+
+
+```{r}
+#rendimenti puliti per il modelllo senza jump
+return_clean=merge(rSx_clean, rUst_clean, rGld_clean, rBr_clean)
+colnames(return_clean)=c("EX_50", "UST_TR", "GOLD", "Brent")
+return_clean=na.omit(return_clean);return_clean
+
+#Numero di periodi di previsione (prendiamlo 12 mesi)
+
+n_forecst=12
+
+```
+
+#Forecast sul mdoello dcc-garch con innovazioni t- di student
+
+```{r previsione, fig.cap="previsione"}
+
+#Forecast
+dcc_forecast_mvt=dccforecast(dcc_fit_mvt, n.ahead = n_forecst)
+#plot(dcc_forecast_mvt, which=1)
+
+#str(dcc_forecast_mvt)
+#Estrazione correlazione previste
+
+#estraggo l'array 4x4x12 direttamente dalla lisat
+R_forecast_mvt=dcc_forecast_mvt@mforecast$R[[1]]
+
+#controllo la die,mnsione 
+dim(R_forecast_mvt)
+
+#Vediamo la correlazione tra EX_50 e GOLD
+cor_ex50_Gold=R_forecast_mvt[1,2,]  #vettore lunghezza n_forecast
+
+
+plot(cor_ex50_Gold, type="l", main="Forecast Correlation EX%-ZGOLD  ")
+
+```
+
+Il forecast delle correlazioni dinamiche DCC-GARCH serve a mostrare òla dinamica condizionale stimata e la tendenza verso la correlazione media, ma non ha valore predittivo assoluto per chè i veri shock futuri sono imprevedibili
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r,include=FALSE}
+
+library(xtable)
+
+garch_results <- data.frame(
+  Asset = c("Euro Stoxx 50", "US Treasury", "Gold", "Brent"),
+  Omega = c(fit1.std@fit$coef[1], fit2.std@fit$coef[1], 
+            fit3.std@fit$coef[1], fit4.std@fit$coef[1]),
+  Alpha = c(fit1.std@fit$coef[2], fit2.std@fit$coef[2], 
+            fit3.std@fit$coef[2], fit4.std@fit$coef[2]),
+  Beta = c(fit1.std@fit$coef[3], fit2.std@fit$coef[3], 
+           fit3.std@fit$coef[3], fit4.std@fit$coef[3]),
+  Nu = c(fit1.std@fit$coef[4], fit2.std@fit$coef[4], 
+         fit3.std@fit$coef[4], fit4.std@fit$coef[4]),
+  LL = c(likelihood(fit1.std), likelihood(fit2.std), 
+         likelihood(fit3.std), likelihood(fit4.std)),
+  AIC = c(infocriteria(fit1.std)[1], infocriteria(fit2.std)[1],
+          infocriteria(fit3.std)[1], infocriteria(fit4.std)[1])
+)
+
+print(xtable(garch_results, 
+             caption = "Stime GARCH(1,1) con distribuzione t-Student",
+             label = "tab:garch-results",
+             digits = c(0,0,4,4,4,2,2,2)),
+      file = "figures/garch_results.tex",
+      include.rownames = FALSE,
+      caption.placement = "top")
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r prezzi di chiusra mensili, inlcude=FALSE}
+
+SX5E_m <- read_excel("dati/EuroSTX 50 ibndex montlhy2.xlsx", sheet = "Foglio1")
+US_TR_m <- read_excel("dati/US treasury bond tt return montlhy.xlsx",sheet = "Foglio1")
+Gold_m <- read_excel("dati/Gld c2 (future) monthly.xlsx", sheet = "Foglio1")
+Brent_m <- read_excel("dati/Brent oil c1 (futures) monthly.xlsx", sheet = "Foglio1")
+
+
+closeSx_m=xts(SX5E_m[,-1], order.by = SX5E_m$`Exchange Date`, frequency = "daily")
+closeUST_m=xts(US_TR_m[,-1], order.by = US_TR_m$`Exchange Date`, frequency = "daily")
+closeGLD_m=xts(Gold_m[,-1], order.by = Gold_m$`Exchange Date`, frequency = "daily")
+closeBr_m=xts(Brent_m[,-1], order.by = Brent_m$`Exchange Date`, frequency = "daily")
+
+par(mfrow=c(2,2))
+plot(closeSx_m)
+plot(closeUST_m)
+plot(closeGLD_m)
+plot(closeBr_m)
+
+```
+
+#rendimenti e vevntuali aggiustamenti
+```{r rendimenti mensili, fig.cap="prezzi chiusra mensili"}
+
+pSx_m=log(closeSx_m)
+pUst_m=log(closeUST_m)
+pGLD_m=log(closeGLD_m)
+pBr_m=log(closeBr_m)
+
+
+#rendimenti percentuali
+
+rSx_m=diff(pSx_m)*100
+rUst_m=diff(pUst_m)*100
+rGLD_m=diff(pGLD_m)*100
+rBr_m=diff(pBr_m)*100
+
+
+
+rSx_m[is.na(rSx_m)]<-0
+rUst_m[is.na(rUst_m)]<-0
+rGLD_m[is.na(rGLD_m)]<-0
+rBr_m[is.na(rBr_m)]<-0
+
+
+par(mfrow=c(2,2))
+plot(rSx_m)
+plot(rUst_m)
+plot(rGLD_m)
+plot(rBr_m)
+
+
+
+
+```
+
+
+
+
+#statistiche descriitttiva
+```{r, include=FALSE}
+all_rendiment_m=merge(rSx_m, rUst_m, rGLD_m, rBr_m) #tutti i rendimenti insieme
+
+basicStats(all_rendiment_m)
+
+```
+
+
+
+
+
+```{r auto rend m, fig.cap="auto di rendimenti msensili" }
+par(mfrow=c(2,2))
+
+acf(rSx_m, lag.max=22, xlab="", main="Sx5E")
+acf(rUst_m, lag.max=22, xlab="", main="UST_TR")
+acf(rGLD_m, lag.max=22, xlab="", main="GOld")
+acf(rBr_m, lag.max=22, xlab="", main="Brent")
+```
+L'acf deir rendimenti mensili non mostar autocorrelazioni significative, suggerendo l'assenza di prevedibilità lineare anche a basse frequenze
+
+
+
+```{r auto rend m ^2, fig.cap="auto di varianza msensili" }
+par(mfrow=c(2,2))
+
+acf(rSx_m^2, lag.max=22, xlab="", main="Sx5E^2")
+acf(rUst_m^2, lag.max=22, xlab="", main="UST_TR^2")
+acf(rGLD_m^2, lag.max=22, xlab="", main="GOld^2")
+acf(rBr_m^2, lag.max=22, xlab="", main="Brent^2")
+```
+
+```{r acf volati m,fig.cap="volatilità mesile"}
+par(mfrow=c(2,2))
+
+acf(abs(rSx_m), lag.max=22, xlab="", main="|Sx5E|")
+acf(abs(rUst_m), lag.max=22, xlab="", main="|UST_TR|")
+acf(abs(rGLD_m), lag.max=22, xlab="", main="|GOLD|")
+acf(abs(rBr_m), lag.max=22, xlab="", main="|Brent|")
+
+
+```
+
+
+
+contuinero a usare garch con innovazione t-student pre la caratteristica delle serie storiche  finanziarie
+
+```{r, include=FALSE}
+
+fit1_m.std=ugarchfit(spec2, rSx_m)
+
+
+fit2_m.std=ugarchfit(spec2, rUst_m)
+
+
+fit3_m.std=ugarchfit(spec2, rGLD_m)
+
+
+fit4_m.std=ugarchfit(spec2, rBr_m)
+```
+
+
+
+#dcc_fit
+
+```{r dcc gartch m, fig.cap="dcc-garch mensile"}
+montly_return=merge(rSx_m,rUst_m, rGLD_m, rBr_m)
+montly_return=na.omit(montly_return)
+
+dcc_fit_m=dccfit(dcc_spec_mvt,data = montly_return )
+
+show(dcc_fit_m)
+
+```
+
+Analisi ddelle correlazioni dinamiche 
+
+```{r corr m, fig.cap="correlazioni mensili",fig.width=10, fig.height=6}
+
+
+R_dyn=rcor(dcc_fit_m)
+plot(R_dyn[1,2,], type="l",ylim=c(-1,1) ,main="correlazione tra asset")
+lines(R_dyn[1,3,], col=2)
+lines(R_dyn[1,4,], col=3)
+lines(R_dyn[2,3,], col=4)
+lines(R_dyn[2,4,], col=6)
+
+
+```
+
+#da commentare  
+
+
+sull'annalisi per i dati mensili non si è ripetuto l'analisi formale della normalità. Poichè la lettueratura ampiamneta documenta come le serie storiche finanziarie sono caratterizzate da cod epesanti anche  afrequenza più bassa, Quindi l'utilizzo di innovazionoi t-Student consente di gestire tale carattteristica in modo flessibile 

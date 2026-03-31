@@ -1,9 +1,9 @@
-# Thesis title
+# Thesis title (Italian version)
 
 This repository contains my thesis and the R code used for the analysis
 
 ##Contents
-- /pdf -> Tesi in italiensk (temporaly)
+- /pdf -> Tesi 
 - /R -> R scripts
 - /data -> datasets
 - /output -> results

@@ -15,4 +15,4 @@ This repository contains my thesis and the R code used for the analysis
 3. Run the scripts
 
 ## Author
-Diallo Thierno ABdourahim
+Diallo Thierno Abdourahim
